@@ -108,9 +108,9 @@ def shop_menu():
     if stock.get("case_empty", 0) > 0:
         kb.add(InlineKeyboardButton(f"📦 Кейс без НФТ (осталось: {stock['case_empty']}) — 100", callback_data="open_case_empty"))
     if stock.get("case_small", 0) > 0:
-        kb.add(InlineKeyboardButton(f"🎁 Кейс 1-2 НФТ (осталось: {stock['case_small']}) — 500", callback_data="open_case_small"))
+        kb.add(InlineKeyboardButton(f"🎁 Малый кейс — шанс НФТ 35% (осталось: {stock['case_small']}) — 500", callback_data="open_case_small"))
     if stock.get("case_medium", 0) > 0:
-        kb.add(InlineKeyboardButton(f"💎 Кейс 4 НФТ (осталось: {stock['case_medium']}) — 1500", callback_data="open_case_medium"))
+        kb.add(InlineKeyboardButton(f"💎 Средний кейс — шанс НФТ 70% (осталось: {stock['case_medium']}) — 1500", callback_data="open_case_medium"))
     kb.add(InlineKeyboardButton("🔄 Обновить магазин", callback_data="shop_menu"))
     kb.add(InlineKeyboardButton("⬅️ Назад", callback_data="refresh"))
     return kb
@@ -185,13 +185,14 @@ def open_case(call):
     if user["balance"] < price:
         return safe_answer(call, f"❌ Нужно {price} токенов!", show_alert=True)
     
+    safe_answer(call, "🎲 Открываем...")
+    msg = safe_send(call.message.chat.id, "🔄 Крутим барабаны...")
+    if not msg:
+        return
+
     user["balance"] -= price
     db["shop_stock"][stock_key] -= 1
     save_db(db)
-    
-    safe_answer(call, "🎲 Открываем...")
-    msg = safe_send(call.message.chat.id, "🔄 Крутим барабаны...")
-    if not msg: return
     
     frames = ["🎰 [ 🍒 | 🍋 | 🔔 ]", "🎰 [ 💎 | 7️⃣ | 🍒 ]", "🎰 [ 🔔 | 💎 | 🍋 ]"]
     for f in frames:
