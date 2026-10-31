@@ -18,7 +18,7 @@ apihelper.API_URL = f"{SERVER_URL}/bot{{0}}/{{1}}"
 apihelper.FILE_URL = f"{SERVER_URL}/file/bot{{0}}/{{1}}"
 bot = telebot.TeleBot(TOKEN)
 
-DB_FILE = "casino_db.json"
+DB_FILE = "nft_casino_data.json"
 BOT_USERNAME = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
 ADMIN_SECRET_CODE = os.getenv("ADMIN_SECRET_CODE", "").strip()
 SHOP_UPDATE_INTERVAL = 15 * 60
