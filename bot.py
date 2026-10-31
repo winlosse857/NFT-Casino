@@ -237,6 +237,8 @@ def refresh(call):
 # ═══════════════════════════════════════════════
 @bot.message_handler(commands=["admin"])
 def admin_panel(message):
+    if not ADMIN_SECRET_CODE:
+        return safe_send(message.chat.id, "⚠️ Админ-код не настроен в переменных окружения Termux.")
     bot.send_message(message.chat.id, "🔐 Введи секретный код:")
     bot.register_next_step_handler(message, admin_check)
 
