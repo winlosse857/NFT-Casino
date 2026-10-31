@@ -563,8 +563,9 @@ def send_stars_invoice(call):
             "XTR",
             [LabeledPrice(f"{tokens} токенов", stars)]
         )
-    except Exception:
-        safe_send(call.message.chat.id, "❌ Не удалось создать счёт. Попробуй позже.")
+    except Exception as e:
+        print(f"[PAYMENT] send_invoice failed: {type(e).__name__}: {e}", flush=True)
+        safe_send(call.message.chat.id, "❌ Не удалось создать счёт. Подробности ошибки записаны в консоль Termux.")
 
 
 @bot.pre_checkout_query_handler(func=lambda query: True)
