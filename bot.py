@@ -3,22 +3,34 @@ import random
 import json
 import os
 import time
+from datetime import date
 from telebot import apihelper
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
 
 # ═══════════════════════════════════════════════
 # НАСТРОЙКИ
 # ═══════════════════════════════════════════════
-TOKEN = "ВАШ_ТОКЕН_БОТА"
-SERVER_URL = "http://177.3.213.27:8081"
+TOKEN = os.getenv("BOT_TOKEN", "").strip()
+if not TOKEN:
+    raise RuntimeError("Укажи BOT_TOKEN в переменных окружения Termux.")
+SERVER_URL = os.getenv("MECHAGRAM_SERVER_URL", "http://177.3.213.27:8081").rstrip("/")
 apihelper.API_URL = f"{SERVER_URL}/bot{{0}}/{{1}}"
 apihelper.FILE_URL = f"{SERVER_URL}/file/bot{{0}}/{{1}}"
 bot = telebot.TeleBot(TOKEN)
 
 DB_FILE = "casino_db.json"
-BOT_USERNAME = "ТВОЙ_БОТ_БЕЗ_@"
-ADMIN_SECRET_CODE = "777"
+BOT_USERNAME = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
+ADMIN_SECRET_CODE = os.getenv("ADMIN_SECRET_CODE", "").strip()
 SHOP_UPDATE_INTERVAL = 15 * 60
+TESTER_IDS = {1780249850, 1780266108}
+PUBLIC_LAUNCH_DATE = date(2026, 11, 1)
+STARS_PACKAGES = {"stars_100": {"stars": 100, "tokens": 100}, "stars_250": {"stars": 250, "tokens": 250}, "stars_500": {"stars": 500, "tokens": 500}, "stars_1000": {"stars": 1000, "tokens": 1000}}
+
+def has_full_access(user_id):
+    return int(user_id) in TESTER_IDS or date.today() >= PUBLIC_LAUNCH_DATE
+
+def launch_stub():
+    return "🔒 NFT-Casino пока закрыт на тестирование.\n\n🎉 Официальное открытие — 01.11.2026.\nДо открытия полный доступ есть только у тестеров."
 
 # ═══════════════════════════════════════════════
 # БАЗА
@@ -34,9 +46,10 @@ def load_db():
             if "shop_timer" not in data: data["shop_timer"] = 0
             if "waiting_step" not in data: data["waiting_step"] = {}
             if "pending_data" not in data: data["pending_data"] = {}
+            if "processed_payments" not in data: data["processed_payments"] = []
             return data
         except Exception: pass
-    return {"users": {}, "promos": {"START": {"type": "tokens", "amount": 1000}}, "shop_stock": {}, "shop_timer": 0, "waiting_step": {}, "pending_data": {}}
+    return {"users": {}, "promos": {"START": {"type": "tokens", "amount": 1000}}, "shop_stock": {}, "shop_timer": 0, "waiting_step": {}, "pending_data": {}, "processed_payments": []}
 
 def save_db(db):
     with open(DB_FILE, "w", encoding="utf-8") as f:
@@ -68,6 +81,7 @@ def get_user(uid):
     if "nfts" not in u: u["nfts"] = []
     if "gifts" not in u: u["gifts"] = []
     if "used_promos" not in u: u["used_promos"] = []
+    if "inventory" not in u: u["inventory"] = {}
     return u
 
 # ═══════════════════════════════════════════════
@@ -120,10 +134,24 @@ def safe_edit(chat_id, message_id, text, markup=None):
     except Exception: pass
 
 # ═══════════════════════════════════════════════
+# ОГРАНИЧЕНИЕ ДО ПУБЛИЧНОГО ЗАПУСКА
+# ═══════════════════════════════════════════════
+@bot.callback_query_handler(func=lambda c: not has_full_access(c.from_user.id))
+def closed_callback(call):
+    safe_answer(call, "Бот пока закрыт на тестирование.", show_alert=True)
+    safe_edit(call.message.chat.id, call.message.message_id, launch_stub())
+
+@bot.message_handler(func=lambda m: not has_full_access(m.from_user.id) and not (m.text or "").startswith("/start"))
+def closed_message(message):
+    safe_send(message.chat.id, launch_stub())
+
+# ═══════════════════════════════════════════════
 # /start
 # ═══════════════════════════════════════════════
 @bot.message_handler(commands=["start"])
 def start(message):
+    if not has_full_access(message.from_user.id):
+        return safe_send(message.chat.id, launch_stub())
     u = get_user(message.from_user.id)
     u["username"] = message.from_user.username or message.from_user.first_name
     save_db(db)
