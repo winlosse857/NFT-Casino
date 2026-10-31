@@ -203,11 +203,15 @@ def open_case(call):
     if case_type == "empty":
         result_text += "😢 Пусто. НФТ не выпало."
     else:
-        count = random.randint(1, 2) if case_type == "small" else 4
-        nft_pool = [f"NFT #{i}" for i in range(1, 21)]
-        won = random.sample(nft_pool, count)
-        user["nfts"].extend(won)
-        result_text += f"🎉 Выпало {len(won)} НФТ:\n" + "\n".join(f"  • {n}" for n in won)
+        nft_chance = {"small": 0.35, "medium": 0.70}[case_type]
+        if random.random() < nft_chance:
+            count = random.randint(1, 2) if case_type == "small" else 4
+            nft_pool = [f"NFT #{i}" for i in range(1, 21)]
+            won = random.sample(nft_pool, count)
+            user["nfts"].extend(won)
+            result_text += f"🎉 Выпало {len(won)} НФТ:\n" + "\n".join(f"  • {n}" for n in won)
+        else:
+            result_text += "😢 НФТ не выпало. Попробуй ещё раз!"
     
     if random.random() < 0.2:
         gift = random.choice(["🎁 Подарок 1", "🎀 Подарок 2", "🧸 Подарок 3"])
