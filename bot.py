@@ -533,22 +533,83 @@ def menu_deposit(call):
 @bot.callback_query_handler(func=lambda c: c.data == "buy_stars")
 def buy_stars(call):
     safe_answer(call)
+    kb = InlineKeyboardMarkup(row_width=1)
+    packages = [(100, 100), (250, 250), (500, 500), (1000, 1000)]
+    for stars, tokens in packages:
+        kb.add(InlineKeyboardButton(
+            f"⭐ {stars} звёзд → {tokens} токенов",
+            callback_data=f"stars_{stars}"
+        ))
+    kb.add(InlineKeyboardButton("⬅️ Назад", callback_data="menu_deposit"))
+    safe_edit(call.message.chat.id, call.message.message_id,
+              "⭐ ВЫБЕРИ ПАКЕТ ПОПОЛНЕНИЯ\nКурс: 1 ⭐ = 1 токен", kb)
+
+
+@bot.callback_query_handler(func=lambda c: c.data in ("stars_100", "stars_250", "stars_500", "stars_1000"))
+def send_stars_invoice(call):
+    safe_answer(call)
+    stars = int(call.data.split("_")[1])
+    tokens = stars
     try:
-        bot.send_invoice(call.message.chat.id, "Пополнение", "100 звёзд → 1000 токенов", "balance_1000", "", "XTR", [LabeledPrice("Пополнение", 100)])
-    except Exception as e: 
-        bot.send_message(call.message.chat.id, f"❌ Ошибка инвойса: {e}")
+        bot.send_invoice(
+            call.message.chat.id,
+            f"Пополнение на {tokens} токенов",
+            f"{stars} Telegram Stars → {tokens} токенов",
+            f"stars_{stars}",
+            "",
+            "XTR",
+            [LabeledPrice(f"{tokens} токенов", stars)]
+        )
+    except Exception:
+        safe_send(call.message.chat.id, "❌ Не удалось создать счёт. Попробуй позже.")
+
 
 @bot.pre_checkout_query_handler(func=lambda query: True)
 def pre_checkout(query):
-    try: bot.answer_pre_checkout_query(query.id, ok=True)
-    except Exception: pass
+    try:
+        stars = int(query.invoice_payload.split("_")[1]) if query.invoice_payload.startswith("stars_") else 0
+    except (ValueError, IndexError):
+        stars = 0
+    if (not has_full_access(query.from_user.id) or stars not in (100, 250, 500, 1000)
+            or query.currency != "XTR" or query.total_amount != stars):
+        try:
+            bot.answer_pre_checkout_query(
+                query.id, ok=False,
+                error_message="Платёж не прошёл проверку. Создай новый счёт."
+            )
+        except Exception:
+            pass
+        return
+    try:
+        bot.answer_pre_checkout_query(query.id, ok=True)
+    except Exception:
+        pass
+
 
 @bot.message_handler(content_types=["successful_payment"])
 def on_payment(message):
+    payment = message.successful_payment
+    try:
+        stars = int(payment.invoice_payload.split("_")[1]) if payment.invoice_payload.startswith("stars_") else 0
+    except (ValueError, IndexError):
+        stars = 0
+    if (stars not in (100, 250, 500, 1000) or payment.currency != "XTR"
+            or payment.total_amount != stars):
+        safe_send(message.chat.id, "⚠️ Платёж получен, но его данные не прошли проверку. Обратись к администратору.")
+        return
+
+    charge_id = payment.telegram_payment_charge_id
+    processed = db.setdefault("processed_payments", [])
+    if charge_id in processed:
+        return safe_send(message.chat.id, "ℹ️ Этот платёж уже был зачислен.")
+
     user = get_user(message.from_user.id)
-    if message.successful_payment.invoice_payload == "balance_1000":
-        user["balance"] += 1000; save_db(db)
-        safe_send(message.chat.id, f"✅ +1000 токенов!\n💵 Баланс: {user['balance']}", main_menu())
+    user["balance"] += stars
+    processed.append(charge_id)
+    save_db(db)
+    safe_send(message.chat.id,
+              f"✅ Оплата прошла! +{stars} токенов.\n💵 Баланс: {user['balance']}",
+              main_menu())
 
 # ═══════════════════════════════════════════════
 # ЗАПУСК
