@@ -21,7 +21,6 @@ bot = telebot.TeleBot(TOKEN)
 DB_FILE = "nft_casino_data.json"
 BOT_USERNAME = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
 ADMIN_SECRET_CODE = os.getenv("ADMIN_SECRET_CODE", "").strip()
-SHOP_UPDATE_INTERVAL = 15 * 60
 TESTER_IDS = {1780249850, 1780266108}
 PUBLIC_LAUNCH_DATE = date(2026, 11, 1)
 
@@ -41,31 +40,18 @@ def load_db():
                 data = json.load(f)
             if "users" not in data: data["users"] = {}
             if "promos" not in data: data["promos"] = {"START": {"type": "tokens", "amount": 1000}}
-            if "shop_stock" not in data: data["shop_stock"] = {}
-            if "shop_timer" not in data: data["shop_timer"] = 0
             if "waiting_step" not in data: data["waiting_step"] = {}
             if "pending_data" not in data: data["pending_data"] = {}
             if "processed_payments" not in data: data["processed_payments"] = []
             return data
         except Exception: pass
-    return {"users": {}, "promos": {"START": {"type": "tokens", "amount": 1000}}, "shop_stock": {}, "shop_timer": 0, "waiting_step": {}, "pending_data": {}, "processed_payments": []}
+    return {"users": {}, "promos": {"START": {"type": "tokens", "amount": 1000}}, "waiting_step": {}, "pending_data": {}, "processed_payments": []}
 
 def save_db(db):
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(db, f, ensure_ascii=False, indent=2)
 
 db = load_db()
-
-def update_shop_stock():
-    now = int(time.time())
-    if now - db.get("shop_timer", 0) >= SHOP_UPDATE_INTERVAL or not db.get("shop_stock"):
-        stock = {}
-        if random.random() < 0.8: stock["case_empty"] = random.randint(5, 20)
-        if random.random() < 0.6: stock["case_small"] = random.randint(2, 10)
-        if random.random() < 0.3: stock["case_medium"] = random.randint(1, 3)
-        db["shop_stock"] = stock
-        db["shop_timer"] = now
-        save_db(db)
 
 def get_user(uid):
     uid = str(uid)
@@ -90,7 +76,6 @@ def main_menu():
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
         InlineKeyboardButton("📦 Кейсы", callback_data="menu_cases"),
-        InlineKeyboardButton("🎮 Мини-игры", callback_data="mini_games_menu"),
         InlineKeyboardButton("🛒 Магазин", callback_data="shop_menu"),
         InlineKeyboardButton("🔐 Секретный код", callback_data="secret_code"),
         InlineKeyboardButton("🏆 Топ игроков", callback_data="top_menu"),
@@ -101,16 +86,10 @@ def main_menu():
     return kb
 
 def shop_menu():
-    update_shop_stock()
-    stock = db["shop_stock"]
     kb = InlineKeyboardMarkup(row_width=1)
-    if stock.get("case_empty", 0) > 0:
-        kb.add(InlineKeyboardButton(f"📦 Кейс без НФТ (осталось: {stock['case_empty']}) — 100", callback_data="open_case_empty"))
-    if stock.get("case_small", 0) > 0:
-        kb.add(InlineKeyboardButton(f"🎁 Малый кейс — шанс НФТ 35% (осталось: {stock['case_small']}) — 500", callback_data="open_case_small"))
-    if stock.get("case_medium", 0) > 0:
-        kb.add(InlineKeyboardButton(f"💎 Средний кейс — шанс НФТ 70% (осталось: {stock['case_medium']}) — 1500", callback_data="open_case_medium"))
-    kb.add(InlineKeyboardButton("🔄 Обновить магазин", callback_data="shop_menu"))
+    kb.add(InlineKeyboardButton("📦 Кейс без НФТ — 100 токенов", callback_data="open_case_empty"))
+    kb.add(InlineKeyboardButton("🎁 Малый кейс — шанс НФТ 35% — 500 токенов", callback_data="open_case_small"))
+    kb.add(InlineKeyboardButton("💎 Средний кейс — шанс НФТ 70% — 1500 токенов", callback_data="open_case_medium"))
     kb.add(InlineKeyboardButton("⬅️ Назад", callback_data="refresh"))
     return kb
 
@@ -171,15 +150,8 @@ def menu_cases(call):
 def open_case(call):
     case_type = call.data.replace("open_case_", "")
     user = get_user(call.from_user.id)
-    update_shop_stock()
-    
     prices = {"empty": 100, "small": 500, "medium": 1500}
     names = {"empty": "📦 Кейс без НФТ", "small": "🎁 Кейс 1-2 НФТ", "medium": "💎 Кейс 4 НФТ"}
-    stock_key = f"case_{case_type}"
-    
-    if db["shop_stock"].get(stock_key, 0) <= 0:
-        return safe_answer(call, "❌ Кейс закончился! Жди обновления.", show_alert=True)
-    
     price = prices[case_type]
     if user["balance"] < price:
         return safe_answer(call, f"❌ Нужно {price} токенов!", show_alert=True)
@@ -190,7 +162,6 @@ def open_case(call):
         return
 
     user["balance"] -= price
-    db["shop_stock"][stock_key] -= 1
     save_db(db)
     
     frames = ["🎰 [ 🍒 | 🍋 | 🔔 ]", "🎰 [ 💎 | 7️⃣ | 🍒 ]", "🎰 [ 🔔 | 💎 | 🍋 ]"]
@@ -361,79 +332,6 @@ def process_promo(message):
     safe_send(message.chat.id, f"✅ Активирован! Награда: {reward_text}\n💵 Баланс: {user['balance']}", main_menu())
 
 # ═══════════════════════════════════════════════
-# МИНИ-ИГРЫ
-# ═══════════════════════════════════════════════
-@bot.callback_query_handler(func=lambda c: c.data == "mini_games_menu")
-def mini_games_menu_cb(call):
-    safe_answer(call)
-    kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(
-        InlineKeyboardButton("🎲 Кубик (+50)", callback_data="mg_dice"),
-        InlineKeyboardButton("🪙 Монетка (x2)", callback_data="mg_coin"),
-        InlineKeyboardButton("🎁 Бонус: Снятие минуса (раз в день)", callback_data="mg_minus"),
-        InlineKeyboardButton("⬅️ Назад", callback_data="refresh")
-    )
-    safe_edit(call.message.chat.id, call.message.message_id, "🎮 МИНИ-ИГРЫ\nВыбери игру:", kb)
-
-@bot.callback_query_handler(func=lambda c: c.data == "mg_dice")
-def mg_dice(call):
-    safe_answer(call)
-    safe_edit(call.message.chat.id, call.message.message_id, "🎲 Бросаем кубик...", None)
-    time.sleep(0.5)
-    user = get_user(call.from_user.id)
-    r = random.randint(1, 6)
-    if r >= 4:
-        user["balance"] += 50
-        txt = f"🎲 Выпало: {r}. Победа! +50 токенов.\n💵 Баланс: {user['balance']}"
-    else:
-        txt = f"🎲 Выпало: {r}. Не повезло."
-    save_db(db)
-    safe_edit(call.message.chat.id, call.message.message_id, txt, main_menu())
-
-@bot.callback_query_handler(func=lambda c: c.data == "mg_coin")
-def mg_coin(call):
-    safe_answer(call)
-    kb = InlineKeyboardMarkup(row_width=2)
-    kb.add(
-        InlineKeyboardButton("🪙 Орел", callback_data="coin_heads"),
-        InlineKeyboardButton("🪙 Решка", callback_data="coin_tails")
-    )
-    kb.add(InlineKeyboardButton("⬅️ Назад", callback_data="mini_games_menu"))
-    safe_edit(call.message.chat.id, call.message.message_id, "🪙 Орел или решка?", kb)
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith("coin_"))
-def coin_flip(call):
-    safe_answer(call)
-    user = get_user(call.from_user.id)
-    choice = call.data.replace("coin_", "")
-    msg = safe_send(call.message.chat.id, "🪙 Подбрасываем...")
-    if not msg: return
-    time.sleep(1)
-    result = random.choice(["heads", "tails"])
-    if choice == result:
-        user["balance"] *= 2
-        txt = f"🪙 {result.capitalize()}! Ты угадал. Баланс удвоен: {user['balance']}"
-    else:
-        txt = f"🪙 {result.capitalize()}! Не угадал."
-    save_db(db)
-    safe_edit(msg.chat.id, msg.message_id, txt, main_menu())
-
-@bot.callback_query_handler(func=lambda c: c.data == "mg_minus")
-def mg_minus(call):
-    safe_answer(call)
-    user = get_user(call.from_user.id)
-    now = int(time.time())
-    if now - user.get("last_minus_bonus", 0) < 86400:
-        left = 86400 - (now - user["last_minus_bonus"])
-        return safe_answer(call, f"⏳ Бонус через {left//3600}ч {(left%3600)//60}м", show_alert=True)
-    if user["balance"] >= 0:
-        return safe_answer(call, "❌ Бонус доступен только при минусовом балансе!", show_alert=True)
-    user["balance"] = 0
-    user["last_minus_bonus"] = now
-    save_db(db)
-    safe_edit(call.message.chat.id, call.message.message_id, "🎁 Минус снят! Твой баланс теперь 0.", main_menu())
-
-# ═══════════════════════════════════════════════
 # ПРОФИЛЬ, ТОП, ВЫВОД, ПОПОЛНЕНИЕ
 # ═══════════════════════════════════════════════
 @bot.callback_query_handler(func=lambda c: c.data == "profile")
@@ -536,5 +434,4 @@ def menu_deposit(call):
 # ═══════════════════════════════════════════════
 if __name__ == "__main__":
     print("🚀 CASINO BOT запущен...")
-    update_shop_stock()
     bot.infinity_polling()
