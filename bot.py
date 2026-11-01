@@ -295,17 +295,18 @@ def admin_actions(call):
     elif data == "adm_create_item":
         kb = InlineKeyboardMarkup(row_width=1)
         kb.add(
-            InlineKeyboardButton("👓 Рентген-очки", callback_data="adm_item_xray"),
-            InlineKeyboardButton("💊 Таблетка", callback_data="adm_item_pill"),
-            InlineKeyboardButton("👼 Зелье ангела", callback_data="adm_item_angel")
+            InlineKeyboardButton("🎁 Обычный подарок", callback_data="adm_item_gift"),
+            InlineKeyboardButton("💎 NFT из коллекции кейсов", callback_data="adm_item_nft")
         )
-        safe_send(call.message.chat.id, "Выбери предмет:", kb)
-    elif data.startswith("adm_item_"):
-        item = data.replace("adm_item_", "")
-        if item not in ("xray", "pill", "angel"):
-            return
-        sent = safe_send(call.message.chat.id, "Введи: КОД КОЛИЧЕСТВО. Например: GIFT5 5")
-        if sent: bot.register_next_step_handler(sent, adm_process_item, item)
+        safe_send(call.message.chat.id, "Выбери награду промокода:", kb)
+    elif data in ("adm_item_gift", "adm_item_nft"):
+        item_type = data.replace("adm_item_", "")
+        sent = safe_send(
+            call.message.chat.id,
+            "Введи: КОД КОЛИЧЕСТВО. Например: GIFT5 5\\n"
+            + ("Будет выдан случайный обычный подарок." if item_type == "gift" else "Будет выдан случайный NFT из коллекции кейсов.")
+        )
+        if sent: bot.register_next_step_handler(sent, adm_process_item, item_type)
     elif data == "adm_list_promos":
         lines = ["📋 ПРОМОКОДЫ:"]
         for code, promo in db["promos"].items():
@@ -324,7 +325,14 @@ def admin_actions(call):
         safe_send(call.message.chat.id, "✅ Бот " + state + ".", admin_keyboard())
 
 def publish_promo(code, promo, chat_id):
-    reward = str(promo.get("amount", 0)) + (" токенов" if promo["type"] == "tokens" else " предмет(ов)")
+    if promo["type"] == "tokens":
+        reward = str(promo.get("amount", 0)) + " токенов"
+    elif promo["type"] == "gift":
+        reward = str(promo.get("amount", 0)) + " обычных подарков"
+    elif promo["type"] == "nft":
+        reward = str(promo.get("amount", 0)) + " NFT (случайные из коллекции кейсов)"
+    else:
+        reward = str(promo.get("amount", 0)) + " предмет(ов)"
     announcement = "🎁 ПРОМОКОД NFT-Casino\n\n🔑 Код: " + code + "\n🏆 Награда: " + reward + "\n\nАктивируй код в боте через меню «Секретный код»."
     posted = safe_send(PROMO_CHANNEL, announcement)
     if posted:
@@ -346,7 +354,7 @@ def adm_process_tokens(message):
     save_db(db)
     publish_promo(code, promo, message.chat.id)
 
-def adm_process_item(message, item):
+def adm_process_item(message, item_type):
     if not is_admin(message.from_user.id): return
     parts = (message.text or "").split()
     if len(parts) != 2: return safe_send(message.chat.id, "Формат: КОД КОЛИЧЕСТВО.")
@@ -355,7 +363,9 @@ def adm_process_item(message, item):
     except ValueError: return safe_send(message.chat.id, "Количество должно быть числом.")
     if not code.isalnum() or amount <= 0: return safe_send(message.chat.id, "Код — латинские буквы/цифры, количество больше нуля.")
     if code in db["promos"]: return safe_send(message.chat.id, "Такой промокод уже существует.")
-    promo = {"type": "item", "item": item, "amount": amount}
+    if item_type not in ("gift", "nft"):
+        return safe_send(message.chat.id, "Неизвестный тип награды.")
+    promo = {"type": item_type, "amount": amount}
     db["promos"][code] = promo
     save_db(db)
     publish_promo(code, promo, message.chat.id)
@@ -404,11 +414,23 @@ def process_promo(message):
     if promo["type"] == "tokens":
         user["balance"] += promo["amount"]
         reward_text = f"+{promo['amount']} токенов"
+    elif promo["type"] == "gift":
+        gifts = ["🎁 Подарок 1", "🎀 Подарок 2", "🧸 Подарок 3"]
+        won_gifts = [random.choice(gifts) for _ in range(promo["amount"])]
+        user.setdefault("gifts", []).extend(won_gifts)
+        reward_text = f"+{promo['amount']} обычных подарков: " + ", ".join(won_gifts)
+    elif promo["type"] == "nft":
+        nft_pool = [nft for case in CASES.values() for nft in case["nfts"]]
+        won_nfts = [random.choice(nft_pool) for _ in range(promo["amount"])]
+        user.setdefault("nfts", []).extend(won_nfts)
+        reward_text = f"+{promo['amount']} NFT: " + ", ".join(won_nfts)
     elif promo["type"] == "item":
+        # Поддержка старых промокодов, созданных до обновления.
         item = promo["item"]
+        user.setdefault("inventory", {})
         user["inventory"][item] = user["inventory"].get(item, 0) + promo["amount"]
         names = {"xray": "Рентген", "pill": "Таблетка", "angel": "Зелье ангела"}
-        reward_text = f"+{promo['amount']} шт. {names[item]}"
+        reward_text = f"+{promo['amount']} шт. {names.get(item, item)}"
         
     user.setdefault("used_promos", []).append(code)
     save_db(db)
