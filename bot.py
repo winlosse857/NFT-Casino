@@ -221,18 +221,27 @@ def open_case(call):
     time.sleep(0.4)
 
     result_text = f"{case['name']}\n\n"
+    won_nft = None
     if random.random() < case["nft_chance"]:
         won_nft = random.choice(case["nfts"])
         user["nfts"].append(won_nft)
-        result_text += f"🎉 Тебе выпал NFT: {won_nft}"
-    else:
-        result_text += "😢 NFT не выпало. Попробуй ещё раз!"
 
-    gift_message = None
+    # Обычный подарок — самостоятельный выигрыш с отдельным шансом 20% в каждом кейсе.
+    gift = None
     if random.random() < GIFT_CHANCE:
         gift = random.choice(["🎁 Подарок 1", "🎀 Подарок 2", "🧸 Подарок 3"])
         user["gifts"].append(gift)
-        gift_message = f"🎁 Вам выпал подарок из Telegram: {gift}"
+
+    if won_nft and gift:
+        result_text += f"🎉 Выпал NFT: {won_nft}\n🎁 Также выпал обычный подарок!"
+    elif won_nft:
+        result_text += f"🎉 Выпал NFT: {won_nft}"
+    elif gift:
+        result_text += "🎁 Выпал обычный подарок!"
+    else:
+        result_text += "😢 В этот раз ничего не выпало. Попробуй ещё раз!"
+
+    gift_message = f"🎁 Вам выпал подарок из Telegram: {gift}" if gift else None
 
     save_db(db)
     safe_edit(msg.chat.id, msg.message_id, result_text + f"\n\n💵 Баланс: {user['balance']}", cases_menu())
