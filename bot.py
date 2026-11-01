@@ -90,11 +90,23 @@ def main_menu():
     )
     return kb
 
+CASES = {
+    "empty": {"name": "📦 Обычный кейс", "price": 100, "nft_chance": 0.001, "nfts": ["NFT #1"]},
+    "cobra": {"name": "🐍 Кейс Кобры", "price": 500, "nft_chance": 0.003, "nfts": ["🐍 Кобра NFT #1", "🐍 Кобра NFT #2"]},
+    "dragon": {"name": "🐉 Кейс Дракона", "price": 1000, "nft_chance": 0.005, "nfts": ["🐉 Дракон NFT #1", "🐉 Дракон NFT #2", "🐉 Дракон NFT #3"]},
+    "win": {"name": "🏆 WIN кейс", "price": 1500, "nft_chance": 0.007, "nfts": ["🏆 WIN NFT #1", "🏆 WIN NFT #2", "🏆 WIN NFT #3", "🏆 WIN NFT #4"]},
+    "luki": {"name": "👑 LUKI кейс", "price": 2000, "nft_chance": 0.01, "nfts": ["👑 LUKI NFT #1", "👑 LUKI NFT #2", "👑 LUKI NFT #3", "👑 LUKI NFT #4", "👑 LUKI NFT #5"]}
+}
+
+GIFT_CHANCE = 0.20
+
 def cases_menu():
     kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(InlineKeyboardButton("📦 Кейс без НФТ — 100 токенов", callback_data="open_case_empty"))
-    kb.add(InlineKeyboardButton("🎁 Малый кейс — шанс НФТ 35% — 500 токенов", callback_data="open_case_small"))
-    kb.add(InlineKeyboardButton("💎 Средний кейс — шанс НФТ 70% — 1500 токенов", callback_data="open_case_medium"))
+    kb.add(InlineKeyboardButton("📦 Обычный кейс — 100 токенов", callback_data="case_info_empty"))
+    kb.add(InlineKeyboardButton("🐍 Кейс Кобры — 500 токенов", callback_data="case_info_cobra"))
+    kb.add(InlineKeyboardButton("🐉 Кейс Дракона — 1000 токенов", callback_data="case_info_dragon"))
+    kb.add(InlineKeyboardButton("🏆 WIN кейс — 1500 токенов", callback_data="case_info_win"))
+    kb.add(InlineKeyboardButton("👑 LUKI кейс — 2000 токенов", callback_data="case_info_luki"))
     kb.add(InlineKeyboardButton("⬅️ Назад", callback_data="refresh"))
     return kb
 
@@ -159,16 +171,41 @@ def menu_cases(call):
     safe_answer(call)
     safe_edit(call.message.chat.id, call.message.message_id, "📦 ВЫБЕРИ КЕЙС:", cases_menu())
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("open_case_"))
+@bot.callback_query_handler(func=lambda c: c.data.startswith("case_info_"))
+def show_case_info(call):
+    case_type = call.data.replace("case_info_", "")
+    case = CASES.get(case_type)
+    if not case:
+        return safe_answer(call, "Кейс не найден.", show_alert=True)
+
+    nft_percent = f"{case['nft_chance'] * 100:g}%"
+    text = (
+        f"{case['name']}\\n\\n"
+        f"💰 Цена: {case['price']} токенов\\n"
+        f"🎒 NFT в коллекции кейса: {len(case['nfts'])}\\n"
+        f"💎 Шанс получить NFT: {nft_percent}\\n"
+        f"🎁 Шанс обычного подарка: 20%\\n\\n"
+        "NFT и обычный подарок могут выпасть одновременно."
+    )
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(InlineKeyboardButton("🎲 Купить и открыть", callback_data=f"buy_case_{case_type}"))
+    kb.add(InlineKeyboardButton("⬅️ Назад к кейсам", callback_data="menu_cases"))
+    safe_answer(call)
+    safe_edit(call.message.chat.id, call.message.message_id, text, kb)
+
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("buy_case_"))
 def open_case(call):
-    case_type = call.data.replace("open_case_", "")
+    case_type = call.data.replace("buy_case_", "")
+    case = CASES.get(case_type)
+    if not case:
+        return safe_answer(call, "Кейс не найден.", show_alert=True)
+
     user = get_user(call.from_user.id)
-    prices = {"empty": 100, "small": 500, "medium": 1500}
-    names = {"empty": "📦 Кейс без НФТ", "small": "🎁 Кейс 1-2 НФТ", "medium": "💎 Кейс 4 НФТ"}
-    price = prices[case_type]
+    price = case["price"]
     if user["balance"] < price:
         return safe_answer(call, f"❌ Нужно {price} токенов!", show_alert=True)
-    
+
     safe_answer(call, "🎲 Открываем...")
     msg = safe_send(call.message.chat.id, "🔄 Крутим барабаны...")
     if not msg:
@@ -176,34 +213,28 @@ def open_case(call):
 
     user["balance"] -= price
     save_db(db)
-    
+
     frames = ["🎰 [ 🍒 | 🍋 | 🔔 ]", "🎰 [ 💎 | 7️⃣ | 🍒 ]", "🎰 [ 🔔 | 💎 | 🍋 ]"]
-    for f in frames:
+    for frame in frames:
         time.sleep(0.4)
-        safe_edit(msg.chat.id, msg.message_id, f)
+        safe_edit(msg.chat.id, msg.message_id, frame)
     time.sleep(0.4)
-    
-    result_text = f"{names[case_type]}\n\n"
-    if case_type == "empty":
-        result_text += "😢 Пусто. НФТ не выпало."
+
+    result_text = f"{case['name']}\\n\\n"
+    if random.random() < case["nft_chance"]:
+        won_nft = random.choice(case["nfts"])
+        user["nfts"].append(won_nft)
+        result_text += f"🎉 Тебе выпал NFT: {won_nft}"
     else:
-        nft_chance = {"small": 0.35, "medium": 0.70}[case_type]
-        if random.random() < nft_chance:
-            count = random.randint(1, 2) if case_type == "small" else 4
-            nft_pool = [f"NFT #{i}" for i in range(1, 21)]
-            won = random.sample(nft_pool, count)
-            user["nfts"].extend(won)
-            result_text += f"🎉 Выпало {len(won)} НФТ:\n" + "\n".join(f"  • {n}" for n in won)
-        else:
-            result_text += "😢 НФТ не выпало. Попробуй ещё раз!"
-    
-    if random.random() < 0.2:
+        result_text += "😢 NFT не выпало. Попробуй ещё раз!"
+
+    if random.random() < GIFT_CHANCE:
         gift = random.choice(["🎁 Подарок 1", "🎀 Подарок 2", "🧸 Подарок 3"])
         user["gifts"].append(gift)
-        result_text += f"\n🎁 Бонус! Выпал обычный подарок: {gift}"
-    
+        result_text += f"\\n🎁 Бонус! Выпал обычный подарок: {gift}"
+
     save_db(db)
-    safe_edit(msg.chat.id, msg.message_id, result_text + f"\n\n💵 Баланс: {user['balance']}", cases_menu())
+    safe_edit(msg.chat.id, msg.message_id, result_text + f"\\n\\n💵 Баланс: {user['balance']}", cases_menu())
 
 # ═══════════════════════════════════════════════
 # ПРОЧЕЕ
