@@ -5,7 +5,7 @@ import os
 import time
 from datetime import date
 from telebot import apihelper
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ═══════════════════════════════════════════════
 # НАСТРОЙКИ
@@ -24,7 +24,6 @@ ADMIN_SECRET_CODE = os.getenv("ADMIN_SECRET_CODE", "").strip()
 SHOP_UPDATE_INTERVAL = 15 * 60
 TESTER_IDS = {1780249850, 1780266108}
 PUBLIC_LAUNCH_DATE = date(2026, 11, 1)
-STARS_PACKAGES = {"stars_100": {"stars": 100, "tokens": 100}, "stars_250": {"stars": 250, "tokens": 250}, "stars_500": {"stars": 500, "tokens": 500}, "stars_1000": {"stars": 1000, "tokens": 1000}}
 
 def has_full_access(user_id):
     return int(user_id) in TESTER_IDS or date.today() >= PUBLIC_LAUNCH_DATE
@@ -528,92 +527,9 @@ def menu_deposit(call):
     kb.add(
         InlineKeyboardButton("💬 @winlose — Гл. разработчик", url="https://t.me/winlose"),
         InlineKeyboardButton("💬 @Lukii — Админ", url="https://t.me/Lukii"),
-        InlineKeyboardButton("⭐ Пополнить через звёзды", callback_data="buy_stars"),
         InlineKeyboardButton("⬅️ Назад", callback_data="refresh")
     )
     safe_edit(call.message.chat.id, call.message.message_id, "💰 ПОПОЛНЕНИЕ\nВыбери способ:", kb)
-
-@bot.callback_query_handler(func=lambda c: c.data == "buy_stars")
-def buy_stars(call):
-    safe_answer(call)
-    kb = InlineKeyboardMarkup(row_width=1)
-    packages = [(100, 100), (250, 250), (500, 500), (1000, 1000)]
-    for stars, tokens in packages:
-        kb.add(InlineKeyboardButton(
-            f"⭐ {stars} звёзд → {tokens} токенов",
-            callback_data=f"stars_{stars}"
-        ))
-    kb.add(InlineKeyboardButton("⬅️ Назад", callback_data="menu_deposit"))
-    safe_edit(call.message.chat.id, call.message.message_id,
-              "⭐ ВЫБЕРИ ПАКЕТ ПОПОЛНЕНИЯ\nКурс: 1 ⭐ = 1 токен", kb)
-
-
-@bot.callback_query_handler(func=lambda c: c.data in ("stars_100", "stars_250", "stars_500", "stars_1000"))
-def send_stars_invoice(call):
-    safe_answer(call)
-    stars = int(call.data.split("_")[1])
-    tokens = stars
-    try:
-        bot.send_invoice(
-            call.message.chat.id,
-            f"Пополнение на {tokens} токенов",
-            f"{stars} Telegram Stars → {tokens} токенов",
-            f"stars_{stars}",
-            "",
-            "XTR",
-            [LabeledPrice(f"{tokens} токенов", stars)]
-        )
-    except Exception as e:
-        print(f"[PAYMENT] send_invoice failed: {type(e).__name__}: {e}", flush=True)
-        safe_send(call.message.chat.id, "❌ Не удалось создать счёт. Подробности ошибки записаны в консоль Termux.")
-
-
-@bot.pre_checkout_query_handler(func=lambda query: True)
-def pre_checkout(query):
-    try:
-        stars = int(query.invoice_payload.split("_")[1]) if query.invoice_payload.startswith("stars_") else 0
-    except (ValueError, IndexError):
-        stars = 0
-    if (not has_full_access(query.from_user.id) or stars not in (100, 250, 500, 1000)
-            or query.currency != "XTR" or query.total_amount != stars):
-        try:
-            bot.answer_pre_checkout_query(
-                query.id, ok=False,
-                error_message="Платёж не прошёл проверку. Создай новый счёт."
-            )
-        except Exception:
-            pass
-        return
-    try:
-        bot.answer_pre_checkout_query(query.id, ok=True)
-    except Exception:
-        pass
-
-
-@bot.message_handler(content_types=["successful_payment"])
-def on_payment(message):
-    payment = message.successful_payment
-    try:
-        stars = int(payment.invoice_payload.split("_")[1]) if payment.invoice_payload.startswith("stars_") else 0
-    except (ValueError, IndexError):
-        stars = 0
-    if (stars not in (100, 250, 500, 1000) or payment.currency != "XTR"
-            or payment.total_amount != stars):
-        safe_send(message.chat.id, "⚠️ Платёж получен, но его данные не прошли проверку. Обратись к администратору.")
-        return
-
-    charge_id = payment.telegram_payment_charge_id
-    processed = db.setdefault("processed_payments", [])
-    if charge_id in processed:
-        return safe_send(message.chat.id, "ℹ️ Этот платёж уже был зачислен.")
-
-    user = get_user(message.from_user.id)
-    user["balance"] += stars
-    processed.append(charge_id)
-    save_db(db)
-    safe_send(message.chat.id,
-              f"✅ Оплата прошла! +{stars} токенов.\n💵 Баланс: {user['balance']}",
-              main_menu())
 
 # ═══════════════════════════════════════════════
 # ЗАПУСК
