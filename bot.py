@@ -76,7 +76,6 @@ def main_menu():
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
         InlineKeyboardButton("📦 Кейсы", callback_data="menu_cases"),
-        InlineKeyboardButton("🛒 Магазин", callback_data="shop_menu"),
         InlineKeyboardButton("🔐 Секретный код", callback_data="secret_code"),
         InlineKeyboardButton("🏆 Топ игроков", callback_data="top_menu"),
         InlineKeyboardButton("👤 Мой профиль", callback_data="profile"),
@@ -85,7 +84,7 @@ def main_menu():
     )
     return kb
 
-def shop_menu():
+def cases_menu():
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(InlineKeyboardButton("📦 Кейс без НФТ — 100 токенов", callback_data="open_case_empty"))
     kb.add(InlineKeyboardButton("🎁 Малый кейс — шанс НФТ 35% — 500 токенов", callback_data="open_case_small"))
@@ -144,7 +143,7 @@ def start(message):
 @bot.callback_query_handler(func=lambda c: c.data == "menu_cases")
 def menu_cases(call):
     safe_answer(call)
-    safe_edit(call.message.chat.id, call.message.message_id, "📦 ВЫБЕРИ КЕЙС:", shop_menu())
+    safe_edit(call.message.chat.id, call.message.message_id, "📦 ВЫБЕРИ КЕЙС:", cases_menu())
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("open_case_"))
 def open_case(call):
