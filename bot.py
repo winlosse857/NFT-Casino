@@ -303,7 +303,7 @@ def admin_actions(call):
         item_type = data.replace("adm_item_", "")
         sent = safe_send(
             call.message.chat.id,
-            "Введи: КОД КОЛИЧЕСТВО. Например: GIFT5 5\\n"
+            "Введи: КОД КОЛИЧЕСТВО. Например: GIFT5 5\n"
             + ("Будет выдан случайный обычный подарок." if item_type == "gift" else "Будет выдан случайный NFT из коллекции кейсов.")
         )
         if sent: bot.register_next_step_handler(sent, adm_process_item, item_type)
