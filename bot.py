@@ -91,14 +91,14 @@ def main_menu():
     return kb
 
 CASES = {
-    "empty": {"name": "📦 Обычный кейс", "price": 100, "nft_chance": 0.001, "nfts": ["NFT #1"]},
-    "cobra": {"name": "🐍 Кейс Кобры", "price": 500, "nft_chance": 0.003, "nfts": ["🐍 Кобра NFT #1", "🐍 Кобра NFT #2"]},
-    "dragon": {"name": "🐉 Кейс Дракона", "price": 1000, "nft_chance": 0.005, "nfts": ["🐉 Дракон NFT #1", "🐉 Дракон NFT #2", "🐉 Дракон NFT #3"]},
-    "win": {"name": "🏆 WIN кейс", "price": 1500, "nft_chance": 0.007, "nfts": ["🏆 WIN NFT #1", "🏆 WIN NFT #2", "🏆 WIN NFT #3", "🏆 WIN NFT #4"]},
-    "luki": {"name": "👑 LUKI кейс", "price": 2000, "nft_chance": 0.01, "nfts": ["👑 LUKI NFT #1", "👑 LUKI NFT #2", "👑 LUKI NFT #3", "👑 LUKI NFT #4", "👑 LUKI NFT #5"]}
+    "empty": {"name": "📦 Обычный кейс", "price": 100, "nft_chance": 0.005, "nfts": ["NFT #1"]},
+    "cobra": {"name": "🐍 Кейс Кобры", "price": 500, "nft_chance": 0.01, "nfts": ["🐍 Кобра NFT #1", "🐍 Кобра NFT #2"]},
+    "dragon": {"name": "🐉 Кейс Дракона", "price": 1000, "nft_chance": 0.015, "nfts": ["🐉 Дракон NFT #1", "🐉 Дракон NFT #2", "🐉 Дракон NFT #3"]},
+    "win": {"name": "🏆 WIN кейс", "price": 1500, "nft_chance": 0.02, "nfts": ["🏆 WIN NFT #1", "🏆 WIN NFT #2", "🏆 WIN NFT #3", "🏆 WIN NFT #4"]},
+    "luki": {"name": "👑 LUKI кейс", "price": 2000, "nft_chance": 0.025, "nfts": ["👑 LUKI NFT #1", "👑 LUKI NFT #2", "👑 LUKI NFT #3", "👑 LUKI NFT #4", "👑 LUKI NFT #5"]}
 }
 
-GIFT_CHANCE = 0.20
+GIFT_CHANCE = 0.97
 
 def cases_menu():
     kb = InlineKeyboardMarkup(row_width=1)
