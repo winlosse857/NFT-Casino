@@ -21,8 +21,13 @@ bot = telebot.TeleBot(TOKEN)
 DB_FILE = "nft_casino_data.json"
 BOT_USERNAME = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
 ADMIN_SECRET_CODE = os.getenv("ADMIN_SECRET_CODE", "").strip()
+ADMIN_SESSIONS = set()
+PROMO_CHANNEL = "@lukiiii"
 TESTER_IDS = {1780249850, 1780266108}
 PUBLIC_LAUNCH_DATE = date(2026, 11, 1)
+
+def is_admin(user_id):
+    return int(user_id) in ADMIN_SESSIONS
 
 def has_full_access(user_id):
     return int(user_id) in TESTER_IDS or date.today() >= PUBLIC_LAUNCH_DATE
@@ -43,9 +48,10 @@ def load_db():
             if "waiting_step" not in data: data["waiting_step"] = {}
             if "pending_data" not in data: data["pending_data"] = {}
             if "processed_payments" not in data: data["processed_payments"] = []
+            if "maintenance" not in data: data["maintenance"] = False
             return data
         except Exception: pass
-    return {"users": {}, "promos": {"START": {"type": "tokens", "amount": 1000}}, "waiting_step": {}, "pending_data": {}, "processed_payments": []}
+    return {"users": {}, "promos": {"START": {"type": "tokens", "amount": 1000}}, "waiting_step": {}, "pending_data": {}, "processed_payments": [], "maintenance": False}
 
 def save_db(db):
     with open(DB_FILE, "w", encoding="utf-8") as f:
@@ -113,6 +119,14 @@ def safe_edit(chat_id, message_id, text, markup=None):
 # ═══════════════════════════════════════════════
 # ОГРАНИЧЕНИЕ ДО ПУБЛИЧНОГО ЗАПУСКА
 # ═══════════════════════════════════════════════
+@bot.message_handler(func=lambda m: db.get("maintenance", False) and not is_admin(m.from_user.id) and (m.text or "") != "/admin")
+def maintenance_message(message):
+    safe_send(message.chat.id, "🛠 NFT-Casino временно закрыт на технические работы. Попробуй зайти позже.")
+
+@bot.callback_query_handler(func=lambda c: db.get("maintenance", False) and not is_admin(c.from_user.id))
+def maintenance_callback(call):
+    safe_answer(call, "🛠 Бот временно закрыт на технические работы.", show_alert=True)
+
 @bot.callback_query_handler(func=lambda c: not has_full_access(c.from_user.id))
 def closed_callback(call):
     safe_answer(call, "Бот пока закрыт на тестирование.", show_alert=True)
@@ -189,7 +203,7 @@ def open_case(call):
         result_text += f"\n🎁 Бонус! Выпал обычный подарок: {gift}"
     
     save_db(db)
-    safe_edit(msg.chat.id, msg.message_id, result_text + f"\n\n💵 Баланс: {user['balance']}", shop_menu())
+    safe_edit(msg.chat.id, msg.message_id, result_text + f"\n\n💵 Баланс: {user['balance']}", cases_menu())
 
 # ═══════════════════════════════════════════════
 # ПРОЧЕЕ
@@ -204,100 +218,139 @@ def refresh(call):
   # ═══════════════════════════════════════════════
 # АДМИН-ПАНЕЛЬ
 # ═══════════════════════════════════════════════
+def admin_keyboard():
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        InlineKeyboardButton("➕ Промокод на токены", callback_data="adm_create_tokens"),
+        InlineKeyboardButton("🎁 Промокод на предмет", callback_data="adm_create_item"),
+        InlineKeyboardButton("📋 Список промокодов", callback_data="adm_list_promos"),
+        InlineKeyboardButton("❌ Удалить промокод", callback_data="adm_delete_promo"),
+        InlineKeyboardButton("📣 Рассылка всем игрокам", callback_data="adm_broadcast"),
+        InlineKeyboardButton("🔒 Закрыть бота на техработы" if not db.get("maintenance", False) else "🔓 Открыть бота после техработ", callback_data="adm_toggle_maintenance")
+    )
+    return kb
+
+def require_admin_call(call):
+    if not is_admin(call.from_user.id):
+        safe_answer(call, "⛔ Нет доступа.", show_alert=True)
+        return False
+    return True
+
 @bot.message_handler(commands=["admin"])
 def admin_panel(message):
     if not ADMIN_SECRET_CODE:
-        return safe_send(message.chat.id, "⚠️ Админ-код не настроен в переменных окружения Termux.")
-    bot.send_message(message.chat.id, "🔐 Введи секретный код:")
-    bot.register_next_step_handler(message, admin_check)
+        return safe_send(message.chat.id, "⚠️ Админ-код не настроен в Termux.")
+    if is_admin(message.from_user.id):
+        return safe_send(message.chat.id, "👑 АДМИН-ПАНЕЛЬ", admin_keyboard())
+    sent = safe_send(message.chat.id, "🔐 Введи секретный код:")
+    if sent:
+        bot.register_next_step_handler(sent, admin_check)
 
 def admin_check(message):
-    if message.text.strip() == ADMIN_SECRET_CODE:
+    if not message.text or message.text.strip() != ADMIN_SECRET_CODE:
+        return safe_send(message.chat.id, "❌ Неверный код.")
+    ADMIN_SESSIONS.add(int(message.from_user.id))
+    safe_send(message.chat.id, "✅ Доступ разрешён.\n👑 АДМИН-ПАНЕЛЬ", admin_keyboard())
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("adm_"))
+def admin_actions(call):
+    if not require_admin_call(call):
+        return
+    data = call.data
+    safe_answer(call)
+    if data == "adm_create_tokens":
+        sent = safe_send(call.message.chat.id, "Введи: КОД СУММА. Например: WIN500 500")
+        if sent: bot.register_next_step_handler(sent, adm_process_tokens)
+    elif data == "adm_create_item":
         kb = InlineKeyboardMarkup(row_width=1)
         kb.add(
-            InlineKeyboardButton("➕ Промокод на Токены", callback_data="adm_create_tokens"),
-            InlineKeyboardButton("🎁 Промокод на Предмет", callback_data="adm_create_item"),
-            InlineKeyboardButton("📋 Список промокодов", callback_data="adm_list_promos"),
-            InlineKeyboardButton("❌ Удалить промокод", callback_data="adm_delete_promo")
+            InlineKeyboardButton("👓 Рентген-очки", callback_data="adm_item_xray"),
+            InlineKeyboardButton("💊 Таблетка", callback_data="adm_item_pill"),
+            InlineKeyboardButton("👼 Зелье ангела", callback_data="adm_item_angel")
         )
-        bot.send_message(message.chat.id, "👑 АДМИН-ПАНЕЛЬ", reply_markup=kb)
-    else:
-        bot.send_message(message.chat.id, "❌ Неверный код.")
+        safe_send(call.message.chat.id, "Выбери предмет:", kb)
+    elif data.startswith("adm_item_"):
+        item = data.replace("adm_item_", "")
+        if item not in ("xray", "pill", "angel"):
+            return
+        sent = safe_send(call.message.chat.id, "Введи: КОД КОЛИЧЕСТВО. Например: GIFT5 5")
+        if sent: bot.register_next_step_handler(sent, adm_process_item, item)
+    elif data == "adm_list_promos":
+        lines = ["📋 ПРОМОКОДЫ:"]
+        for code, promo in db["promos"].items():
+            lines.append(f"{code} — {promo.get('amount', 0)}")
+        safe_send(call.message.chat.id, "\n".join(lines), admin_keyboard())
+    elif data == "adm_delete_promo":
+        sent = safe_send(call.message.chat.id, "Введи код для удаления:")
+        if sent: bot.register_next_step_handler(sent, adm_process_delete)
+    elif data == "adm_broadcast":
+        sent = safe_send(call.message.chat.id, "Отправь текст сообщения для всех игроков:")
+        if sent: bot.register_next_step_handler(sent, adm_process_broadcast)
+    elif data == "adm_toggle_maintenance":
+        db["maintenance"] = not db.get("maintenance", False)
+        save_db(db)
+        state = "закрыт на техработы" if db["maintenance"] else "снова открыт"
+        safe_send(call.message.chat.id, "✅ Бот " + state + ".", admin_keyboard())
 
-@bot.callback_query_handler(func=lambda c: c.data == "adm_create_tokens")
-def adm_create_tokens(call):
-    safe_answer(call)
-    bot.send_message(call.message.chat.id, "Введи: `КОД СУММА`\nПример: `WIN 500`")
-    bot.register_next_step_handler(call.message, adm_process_tokens)
+def publish_promo(code, promo, chat_id):
+    reward = str(promo.get("amount", 0)) + (" токенов" if promo["type"] == "tokens" else " предмет(ов)")
+    announcement = "🎁 ПРОМОКОД NFT-Casino\n\n🔑 Код: " + code + "\n🏆 Награда: " + reward + "\n\nАктивируй код в боте через меню «Секретный код»."
+    posted = safe_send(PROMO_CHANNEL, announcement)
+    if posted:
+        safe_send(chat_id, "✅ Промокод создан и опубликован в https://t.me/lukiiii\n\n" + announcement)
+    else:
+        safe_send(chat_id, "⚠️ Промокод создан, но публикация в канале не удалась. Добавь бота администратором @lukiiii с правом публикации.\n\nТекст для канала:\n" + announcement)
 
 def adm_process_tokens(message):
-    parts = message.text.split()
-    if len(parts) != 2: return safe_send(message.chat.id, "❌ Формат: `КОД СУММА`")
-    code, amount_str = parts[0].upper(), parts[1]
-    try: amount = int(amount_str)
-    except ValueError: return safe_send(message.chat.id, "❌ Сумма должна быть числом.")
-    
-    db["promos"][code] = {"type": "tokens", "amount": amount}
+    if not is_admin(message.from_user.id): return
+    parts = (message.text or "").split()
+    if len(parts) != 2: return safe_send(message.chat.id, "Формат: КОД СУММА.")
+    code = parts[0].upper()
+    try: amount = int(parts[1])
+    except ValueError: return safe_send(message.chat.id, "Сумма должна быть числом.")
+    if not code.isalnum() or amount <= 0: return safe_send(message.chat.id, "Код — латинские буквы/цифры, сумма больше нуля.")
+    if code in db["promos"]: return safe_send(message.chat.id, "Такой промокод уже существует.")
+    promo = {"type": "tokens", "amount": amount}
+    db["promos"][code] = promo
     save_db(db)
-    safe_send(message.chat.id, f"✅ Промокод `{code}` на {amount} токенов создан!")
-
-@bot.callback_query_handler(func=lambda c: c.data == "adm_create_item")
-def adm_create_item(call):
-    safe_answer(call)
-    kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(
-        InlineKeyboardButton("👓 Рентген-очки", callback_data="adm_item_xray"),
-        InlineKeyboardButton("💊 Таблетка", callback_data="adm_item_pill"),
-        InlineKeyboardButton("👼 Зелье ангела", callback_data="adm_item_angel")
-    )
-    safe_edit(call.message.chat.id, call.message.message_id, "Выбери предмет:", kb)
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith("adm_item_"))
-def adm_item_chosen(call):
-    item = call.data.replace("adm_item_", "")
-    names = {"xray": "Рентген", "pill": "Таблетка", "angel": "Зелье ангела"}
-    bot.send_message(call.message.chat.id, f"Введи: `КОД КОЛИЧЕСТВО` для предмета *{names[item]}*\nПример: `XRAY3 5`")
-    bot.register_next_step_handler(call.message, adm_process_item, item)
+    publish_promo(code, promo, message.chat.id)
 
 def adm_process_item(message, item):
-    parts = message.text.split()
-    if len(parts) != 2: return safe_send(message.chat.id, "❌ Формат: `КОД КОЛИЧЕСТВО`")
-    code, amount_str = parts[0].upper(), parts[1]
-    try: amount = int(amount_str)
-    except ValueError: return safe_send(message.chat.id, "❌ Количество должно быть числом.")
-    
-    db["promos"][code] = {"type": "item", "item": item, "amount": amount}
+    if not is_admin(message.from_user.id): return
+    parts = (message.text or "").split()
+    if len(parts) != 2: return safe_send(message.chat.id, "Формат: КОД КОЛИЧЕСТВО.")
+    code = parts[0].upper()
+    try: amount = int(parts[1])
+    except ValueError: return safe_send(message.chat.id, "Количество должно быть числом.")
+    if not code.isalnum() or amount <= 0: return safe_send(message.chat.id, "Код — латинские буквы/цифры, количество больше нуля.")
+    if code in db["promos"]: return safe_send(message.chat.id, "Такой промокод уже существует.")
+    promo = {"type": "item", "item": item, "amount": amount}
+    db["promos"][code] = promo
     save_db(db)
-    names = {"xray": "Рентген", "pill": "Таблетка", "angel": "Зелье ангела"}
-    safe_send(message.chat.id, f"✅ Промокод `{code}` на {amount} шт. ({names[item]}) создан!")
-
-@bot.callback_query_handler(func=lambda c: c.data == "adm_list_promos")
-def adm_list_promos(call):
-    safe_answer(call)
-    if not db["promos"]:
-        return safe_edit(call.message.chat.id, call.message.message_id, "📭 Список пуст.", None)
-    lines = ["📋 СПИСОК ПРОМОКОДОВ:\n"]
-    for code, data in db["promos"].items():
-        if data["type"] == "tokens":
-            lines.append(f"• `{code}` — {data['amount']} токенов")
-        else:
-            lines.append(f"• `{code}` — {data['amount']} шт. ({data['item']})")
-    safe_edit(call.message.chat.id, call.message.message_id, "\n".join(lines), back_kb())
-
-@bot.callback_query_handler(func=lambda c: c.data == "adm_delete_promo")
-def adm_delete_promo(call):
-    safe_answer(call)
-    bot.send_message(call.message.chat.id, "Введи код промокода для удаления:")
-    bot.register_next_step_handler(call.message, adm_process_delete)
+    publish_promo(code, promo, message.chat.id)
 
 def adm_process_delete(message):
-    code = message.text.strip().upper()
+    if not is_admin(message.from_user.id): return
+    code = (message.text or "").strip().upper()
     if code in db["promos"]:
         del db["promos"][code]
         save_db(db)
-        safe_send(message.chat.id, f"✅ Промокод `{code}` удален.")
+        safe_send(message.chat.id, "Промокод удалён.", admin_keyboard())
     else:
-        safe_send(message.chat.id, "❌ Промокод не найден.")
+        safe_send(message.chat.id, "Промокод не найден.")
+
+def adm_process_broadcast(message):
+    if not is_admin(message.from_user.id): return
+    body = (message.text or "").strip()
+    if not body: return safe_send(message.chat.id, "Пустое сообщение. Рассылка отменена.")
+    sent_count = 0
+    failed_count = 0
+    for uid in list(db.get("users", {}).keys()):
+        result = safe_send(int(uid), body)
+        if result: sent_count += 1
+        else: failed_count += 1
+        time.sleep(0.05)
+    safe_send(message.chat.id, "📣 Рассылка завершена.\nДоставлено: " + str(sent_count) + "\nНе доставлено: " + str(failed_count), admin_keyboard())
 
 # ═══════════════════════════════════════════════
 # ПРОМОКОДЫ (ИГРОК)
