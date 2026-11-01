@@ -228,13 +228,19 @@ def open_case(call):
     else:
         result_text += "😢 NFT не выпало. Попробуй ещё раз!"
 
+    gift_message = None
     if random.random() < GIFT_CHANCE:
         gift = random.choice(["🎁 Подарок 1", "🎀 Подарок 2", "🧸 Подарок 3"])
         user["gifts"].append(gift)
-        result_text += f"\n🎁 Бонус! Выпал обычный подарок: {gift}"
+        gift_message = f"🎁 Вам выпал подарок из Telegram: {gift}"
 
     save_db(db)
     safe_edit(msg.chat.id, msg.message_id, result_text + f"\n\n💵 Баланс: {user['balance']}", cases_menu())
+
+    # Отдельное уведомление о подарке приходит после завершения анимации и результата кейса.
+    if gift_message:
+        time.sleep(1.5)
+        safe_send(call.message.chat.id, gift_message)
 
 # ═══════════════════════════════════════════════
 # ПРОЧЕЕ
