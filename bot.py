@@ -180,11 +180,11 @@ def show_case_info(call):
 
     nft_percent = f"{case['nft_chance'] * 100:g}%"
     text = (
-        f"{case['name']}\\n\\n"
-        f"💰 Цена: {case['price']} токенов\\n"
-        f"🎒 NFT в коллекции кейса: {len(case['nfts'])}\\n"
-        f"💎 Шанс получить NFT: {nft_percent}\\n"
-        f"🎁 Шанс обычного подарка: 20%\\n\\n"
+        f"{case['name']}\n\n"
+        f"💰 Цена: {case['price']} токенов\n"
+        f"🎒 NFT в коллекции кейса: {len(case['nfts'])}\n"
+        f"💎 Шанс получить NFT: {nft_percent}\n"
+        f"🎁 Шанс обычного подарка: 20%\n\n"
         "NFT и обычный подарок могут выпасть одновременно."
     )
     kb = InlineKeyboardMarkup(row_width=1)
@@ -220,7 +220,7 @@ def open_case(call):
         safe_edit(msg.chat.id, msg.message_id, frame)
     time.sleep(0.4)
 
-    result_text = f"{case['name']}\\n\\n"
+    result_text = f"{case['name']}\n\n"
     if random.random() < case["nft_chance"]:
         won_nft = random.choice(case["nfts"])
         user["nfts"].append(won_nft)
@@ -231,10 +231,10 @@ def open_case(call):
     if random.random() < GIFT_CHANCE:
         gift = random.choice(["🎁 Подарок 1", "🎀 Подарок 2", "🧸 Подарок 3"])
         user["gifts"].append(gift)
-        result_text += f"\\n🎁 Бонус! Выпал обычный подарок: {gift}"
+        result_text += f"\n🎁 Бонус! Выпал обычный подарок: {gift}"
 
     save_db(db)
-    safe_edit(msg.chat.id, msg.message_id, result_text + f"\\n\\n💵 Баланс: {user['balance']}", cases_menu())
+    safe_edit(msg.chat.id, msg.message_id, result_text + f"\n\n💵 Баланс: {user['balance']}", cases_menu())
 
 # ═══════════════════════════════════════════════
 # ПРОЧЕЕ
